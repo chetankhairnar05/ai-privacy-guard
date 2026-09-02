@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Privacy Playground</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      body {
+        background-color: #121212;
+        color: #fff;
+        padding: 40px;
+      }
+      .container {
+        max-width: 800px;
+        margin: auto;
+      }
+      .box {
+        background: #1e1e24;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      textarea {
+        width: 100%;
+        height: 100px;
+        background: #2a2a35;
+        color: #fff;
+        border: none;
+        padding: 10px;
+      }
+      .item-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #333;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+      }
+      .item-row input[type="text"] {
+        background: #121212;
+        color: #fff;
+        border: 1px solid #555;
+        padding: 5px;
+      }
+      button {
+        background: #0084ff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Privacy Playground</h2>
+
+      <div class="box">
+        <h3>Detected Private Information</h3>
+        <div id="items-list">
+          <!-- JS will inject items here -->
+        </div>
+      </div>
+
+      <div class="box">
+        <h3>Live Sanitized Prompt</h3>
+        <p style="font-size: 12px; color: #aaa">
+          Check/uncheck boxes above to adjust this output.
+        </p>
+        <textarea id="output-box" readonly></textarea>
+        <br /><br />
+        <button id="copy-btn">Copy & Return to ChatGPT</button>
+      </div>
+    </div>
+
+    <script src="playground.js"></script>
+  </body>
+</html>

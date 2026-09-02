@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Local AI Privacy Guard",
+  "version": "1.1",
+  "description": "Intercepts prompts and gives users options to mask PII.",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://127.0.0.1:8000/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://chatgpt.com/*", "*://*.chatgpt.com/*"],
+      "js": ["content.js"],
+      "css": ["style.css"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["playground.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
