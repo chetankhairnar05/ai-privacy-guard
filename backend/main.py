@@ -44,40 +44,151 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     if not text_content.strip():
         return {"has_pii": False, "flagged_items": []}
 
+    # EXPANDED, EXHAUSTIVE SYSTEM PROMPT (8 Categories)
     system_prompt = (
-        "You are an expert data privacy auditor. Your task is the exhaustive extraction of ALL Personally Identifiable Information (PII).\n"
-        "Carefully scan line-by-line and extract exact values for:\n"
-        "1. PERSON_NAME (Real names, family members, officials)\n"
-        "2. CONTACT (Emails, phone numbers, addresses, handles)\n"
-        "3. FINANCIAL (Card numbers, CVV, bank account numbers)\n"
-        "4. GOVERNMENT_ID (SSN, Passports, Driver's License)\n"
-        "5. SECURITY_BIOMETRIC (Passwords, Birth dates/cities, cryptographic keys, hashes)\n"
-        "6. INSTITUTIONAL (School, company, university IDs)\n\n"
-        "CRITICAL: Extract the sensitive VALUE ONLY. Do not omit any ID or hash."
+        "You are an elite, zero-tolerance Data Privacy & PII Auditor. "
+        "Your objective is the EXHAUSTIVE extraction of every piece of Personally Identifiable Information (PII), "
+        "sensitive personal data, and confidential credentials from the provided text.\n\n"
+        "You MUST detect and categorize every instance into one of these 8 categories:\n"
+        "1. PERSONAL_IDENTIFIER: Individual names, maiden names, family members, spouses, managers, educators.\n"
+        "2. DEMOGRAPHIC_VITAL: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
+        "3. CONTACT_LOCATION: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
+        "4. GOVERNMENT_LEGAL: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
+        "5. FINANCIAL_EMPLOYMENT: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
+        "6. HEALTH_MEDICAL: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
+        "7. NETWORK_DEVICE: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
+        "8. SECURITY_SECRET: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
+        "STRICT EXTRACTION RULES:\n"
+        "- Extract the exact literal VALUE only (e.g., extract 'Apex National Bank', not 'Primary Bank Name: Apex National Bank').\n"
+        "- NEVER skip consecutive items (if there are two emails or two phone numbers, extract BOTH).\n"
+        "- Include bank and insurance provider names, not just their numbers.\n"
+        "- Include dates of birth and geographic birthplaces.\n"
+        "- Extract ALL values even if the list is long. Do not summarize or abbreviate."
     )
 
+    # # HIGH-DENSITY FEW-SHOT CALIBRATION
+    # messages = [
+    #     {"role": "system", "content": system_prompt},
+    #     {
+    #         "role": "user",
+    #         "content": (
+    #             "Text to audit:\n"
+    #             "Born: 12 May 1995 in Boston, MA.\n"
+    #             "Emails: test1@mail.com, test2@backup.org.\n"
+    #             "Bank: Chase Bank, Acc: 987654321, Salary: $90,000.\n"
+    #             "Doctor: Dr. Smith, Allergy: Sulfa."
+    #         )
+    #     },
+    #     {
+    #         "role": "assistant",
+    #         "content": json.dumps({
+    #             "has_pii": True,
+    #             "flagged_items": [
+    #                 {"text": "12 May 1995", "type": "DEMOGRAPHIC_VITAL"},
+    #                 {"text": "Boston, MA", "type": "DEMOGRAPHIC_VITAL"},
+    #                 {"text": "test1@mail.com", "type": "CONTACT_LOCATION"},
+    #                 {"text": "test2@backup.org", "type": "CONTACT_LOCATION"},
+    #                 {"text": "Chase Bank", "type": "FINANCIAL_EMPLOYMENT"},
+    #                 {"text": "987654321", "type": "FINANCIAL_EMPLOYMENT"},
+    #                 {"text": "$90,000", "type": "FINANCIAL_EMPLOYMENT"},
+    #                 {"text": "Dr. Smith", "type": "HEALTH_MEDICAL"},
+    #                 {"text": "Sulfa", "type": "HEALTH_MEDICAL"}
+    #             ]
+    #         })
+    #     },
+    #     {"role": "user", "content": f"Text to audit:\n{text_content}"}
+    # ]
+    # 3. HIGH-DENSITY FEW-SHOT CALIBRATION (Updated for Key-Value Lists)
+    # messages = [
+    #     {"role": "system", "content": system_prompt},
+    #     {
+    #         "role": "user",
+    #         "content": (
+    #             "Text to audit:\n"
+    #             "1. Personal Records\n"
+    #             "- Full Legal Name: John Doe\n"
+    #             "- Date of Birth: 22 October 1990\n"
+    #             "- Place of Birth: Seattle, Washington\n"
+    #             "2. Financial Info\n"
+    #             "- Bank Account Number: 00981020003456\n"
+    #         )
+    #     },
+    #     {
+    #         "role": "assistant",
+    #         "content": json.dumps({
+    #             "has_pii": True,
+    #             "flagged_items": [
+    #                 {"text": "John Doe", "type": "PERSONAL_IDENTIFIER"},
+    #                 {"text": "22 October 1990", "type": "DEMOGRAPHIC_VITAL"},
+    #                 {"text": "Seattle, Washington", "type": "DEMOGRAPHIC_VITAL"},
+    #                 {"text": "00981020003456", "type": "FINANCIAL_EMPLOYMENT"}
+    #             ]
+    #         })
+    #     },
+    #     {"role": "user", "content": f"Text to audit:\n{text_content}"}
+    # ]
+
+    # 3. HIGH-DENSITY MULTI-FORMAT FEW-SHOT CALIBRATION
+    # This teaches the model to handle BOTH unstructured paragraphs AND strict key-value lists.
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": "Text to audit: My name is Alice, email is alice@test.com, born in Chicago."},
-        {"role": "assistant", "content": '{"has_pii": true, "flagged_items": [{"text": "Alice", "type": "PERSON_NAME"}, {"text": "alice@test.com", "type": "CONTACT"}, {"text": "Chicago", "type": "SECURITY_BIOMETRIC"}]}'},
-        {"role": "user", "content": f"Text to audit: {text_content[:4000]}"} # Scan first 4k chars to stay fast
+        {
+            "role": "user",
+            "content": (
+                "Text to audit:\n"
+                "Profile Summary:\n"
+                "Born: 12 May 1995 in Boston, MA. Emails: test1@mail.com, test2@backup.org. "
+                "Bank: Chase Bank, Acc: 987654321, Salary: $90,000. Doctor: Dr. Smith, Allergy: Sulfa.\n\n"
+                "1. Personal Records\n"
+                "- Full Legal Name: John Doe\n"
+                "- Date of Birth: 22 October 1990\n"
+                "- Place of Birth: Seattle, Washington\n"
+                "2. Financial Info\n"
+                "- Bank Account Number: 00981020003456"
+            )
+        },
+        {
+            "role": "assistant",
+            "content": json.dumps({
+                "has_pii": True,
+                "flagged_items": [
+                    {"text": "12 May 1995", "type": "DEMOGRAPHIC_VITAL"},
+                    {"text": "Boston, MA", "type": "DEMOGRAPHIC_VITAL"},
+                    {"text": "test1@mail.com", "type": "CONTACT_LOCATION"},
+                    {"text": "test2@backup.org", "type": "CONTACT_LOCATION"},
+                    {"text": "Chase Bank", "type": "FINANCIAL_EMPLOYMENT"},
+                    {"text": "987654321", "type": "FINANCIAL_EMPLOYMENT"},
+                    {"text": "$90,000", "type": "FINANCIAL_EMPLOYMENT"},
+                    {"text": "Dr. Smith", "type": "HEALTH_MEDICAL"},
+                    {"text": "Sulfa", "type": "HEALTH_MEDICAL"},
+                    {"text": "John Doe", "type": "PERSONAL_IDENTIFIER"},
+                    {"text": "22 October 1990", "type": "DEMOGRAPHIC_VITAL"},
+                    {"text": "Seattle, Washington", "type": "DEMOGRAPHIC_VITAL"},
+                    {"text": "00981020003456", "type": "FINANCIAL_EMPLOYMENT"}
+                ]
+            })
+        },
+        {"role": "user", "content": f"Text to audit:\n{text_content}"}
     ]
-
+    
     ollama_payload = {
         "model": "llama3.2:3b",
         "messages": messages,
         "format": PIIScanResult.model_json_schema(),
         "stream": False,
-        "options": {"temperature": 0.0}
+        "options": {
+            "temperature": 0.0,
+            "num_ctx": 8192  # Ensure full context window is available for long outputs
+        }
     }
 
     try:
-        res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=90)
+        res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=120)
         res.raise_for_status()
         raw_result = res.json()["message"]["content"]
         return json.loads(raw_result)
     except Exception as e:
-        print(f"Ollama Error: {e}")
+        print(f"Extraction error: {e}")
         return {"has_pii": False, "flagged_items": []}
 
 # ----------------- DOCUMENT TEXT EXTRACTION -----------------
