@@ -86,29 +86,41 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     """Layer 2: Probabilistic LLM catching (WITH CHUNKING)."""
     
     system_prompt = (
-        "You are an elite, zero-tolerance Data Privacy & PII Auditor. "
-        "Your objective is the EXHAUSTIVE extraction of every piece of Personally Identifiable Information (PII), "
-        "sensitive personal data, and confidential credentials from the provided text.\n\n"
-        "You MUST detect and categorize every instance into one of these 8 categories:\n"
-        "1. PERSONAL_IDENTIFIER: Individual names, maiden names, family members, spouses, managers, educators.\n"
-        "2. DEMOGRAPHIC_VITAL: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
-        "3. CONTACT_LOCATION: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
-        "4. GOVERNMENT_LEGAL: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
-        "5. FINANCIAL_EMPLOYMENT: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
-        "6. HEALTH_MEDICAL: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
-        "7. NETWORK_DEVICE: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
-        "8. SECURITY_SECRET: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
-        "STRICT EXTRACTION RULES:\n"
-        "- Extract the exact literal VALUE only (e.g., extract 'Apex National Bank', not 'Primary Bank Name: Apex National Bank').\n"
-        "- NEVER skip consecutive items (if there are two emails or two phone numbers, extract BOTH).\n"
-        "- Include bank and insurance provider names, not just their numbers.\n"
-        "- Include dates of birth and geographic birthplaces.\n"
-        "- Extract ALL values even if the list is long. Do not summarize or abbreviate."
+    "You are an elite, zero-tolerance Data Privacy & PII Auditor. "
+    "Your objective is the EXHAUSTIVE extraction of every piece of Personally Identifiable Information (PII), "
+    "sensitive personal data, and confidential credentials from the provided text.\n\n"
+    "You MUST detect and categorize every instance into one of these 8 categories:\n"
+    "1. PERSONAL_IDENTIFIER: Individual names, maiden names, family members, spouses, managers, educators.\n"
+    "2. DEMOGRAPHIC_VITAL: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
+    "3. CONTACT_LOCATION: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
+    "4. GOVERNMENT_LEGAL: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
+    "5. FINANCIAL_EMPLOYMENT: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
+    "6. HEALTH_MEDICAL: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
+    "7. NETWORK_DEVICE: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
+    "8. SECURITY_SECRET: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
+    "STRICT EXTRACTION RULES:\n"
+    "- ANTI-NORMALIZATION: You MUST extract the EXACT raw string. DO NOT change capitalization. DO NOT fix spelling. DO NOT remove extra spaces. If the text says 'aMit  sHarma', you must extract 'aMit  sHarma' this is the most important rule to follow.\n"
+    "- OBFUSCATION & CORRUPTION BYPASS: PII may be corrupted by PDF extraction or typed with Leet Speak (e.g., 'j0hn', '@lice', 'P@ssw0rd', 'A.m.i.t', 'S H A R M A'). You MUST identify and extract these obfuscated values exactly as written.\n"
+    "- CONTEXTUAL PII: Extract unconventional formats, such as spelled-out dates ('Fourth of December') or conversational addresses ('42nd and Broadway, apt 3B').\n"
+    "- Extract the exact literal VALUE only (e.g., extract 'Apex National Bank', not 'Primary Bank Name: Apex National Bank').\n"
+    "- NEVER skip consecutive items (if there are two emails or two phone numbers, extract BOTH).\n"
+    "- Include bank and insurance provider names, not just their numbers.\n"
+    "- Include dates of birth and geographic birthplaces.\n"
+    "- Extract ALL values even if the list is long. Do not summarize or abbreviate."
     )
-
     # 1. Split text into manageable chunks (~3000 chars)
+    # chunk_size = 2000
+    # chunks = [text_content[i:i + chunk_size] for i in range(0, len(text_content), chunk_size)]
+    # 1. Split text into manageable chunks WITH OVERLAP
     chunk_size = 2000
-    chunks = [text_content[i:i + chunk_size] for i in range(0, len(text_content), chunk_size)]
+    overlap = 50  # 50 characters overlap ensures no word/name is chopped in half
+    chunks = []
+    
+    start = 0
+    while start < len(text_content):
+        end = start + chunk_size
+        chunks.append(text_content[start:end])
+        start += (chunk_size - overlap) # Move forward, but step back 100 chars
     
     all_flagged_items = []
 
@@ -116,67 +128,58 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     for index, chunk in enumerate(chunks):
         print(f"[*] Processing Ollama Chunk {index + 1} of {len(chunks)}...")
         
-        # messages = [
-        #     {"role": "system", "content": system_prompt},
-        #     {
-        #         "role": "user",
-        #         "content": "Text to audit:\nBorn: 12 May 1995. Email: test@mail.com.\n- Name: John Doe"
-        #     },
-        #     {
-        #         "role": "assistant",
-        #         "content": json.dumps({
-        #             "has_pii": True,
-        #             "flagged_items": [
-        #                 {"text": "12 May 1995", "type": "DEMOGRAPHIC_VITAL"},
-        #                 {"text": "test@mail.com", "type": "CONTACT_LOCATION"},
-        #                 {"text": "John Doe", "type": "PERSONAL_IDENTIFIER"}
-        #             ]
-        #         })
-        #     },
-        #     {"role": "user", "content": f"Text to audit:\n{chunk}"}
-        # ]
-        # 3. HIGH-DENSITY MULTI-FORMAT FEW-SHOT CALIBRATION
-    # This teaches the model to handle BOTH unstructured paragraphs AND strict key-value lists.
+        
         messages = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": (
-                    "Text to audit:\n"
-                    "Profile Summary:\n"
-                    "Born: 12 May 1995 in Boston, MA. Emails: test1@mail.com, test2@backup.org. "
-                    "Bank: Chase Bank, Acc: 987654321, Salary: $90,000. Doctor: Dr. Smith, Allergy: Sulfa.\n\n"
-                    "1. Personal Records\n"
-                    "- Full Legal Name: John Doe\n"
-                    "- Date of Birth: 22 October 1990\n"
-                    "- Place of Birth: Seattle, Washington\n"
-                    "2. Financial Info\n"
-                    "- Bank Account Number: 00981020003456"
-                )
-            },
-            {
-                "role": "assistant",
-                "content": json.dumps({
-                    "has_pii": True,
-                    "flagged_items": [
-                        {"text": "12 May 1995", "type": "DEMOGRAPHIC_VITAL"},
-                        {"text": "Boston, MA", "type": "DEMOGRAPHIC_VITAL"},
-                        {"text": "test1@mail.com", "type": "CONTACT_LOCATION"},
-                        {"text": "test2@backup.org", "type": "CONTACT_LOCATION"},
-                        {"text": "Chase Bank", "type": "FINANCIAL_EMPLOYMENT"},
-                        {"text": "987654321", "type": "FINANCIAL_EMPLOYMENT"},
-                        {"text": "$90,000", "type": "FINANCIAL_EMPLOYMENT"},
-                        {"text": "Dr. Smith", "type": "HEALTH_MEDICAL"},
-                        {"text": "Sulfa", "type": "HEALTH_MEDICAL"},
-                        {"text": "John Doe", "type": "PERSONAL_IDENTIFIER"},
-                        {"text": "22 October 1990", "type": "DEMOGRAPHIC_VITAL"},
-                        {"text": "Seattle, Washington", "type": "DEMOGRAPHIC_VITAL"},
-                        {"text": "00981020003456", "type": "FINANCIAL_EMPLOYMENT"}
-                    ]
-                })
-            },
-            {"role": "user", "content": f"Text to audit:\n{text_content}"}
-        ]
+    {"role": "system", "content": system_prompt},
+    {
+        "role": "user",
+        "content": (
+            "Text to audit:\n"
+            "Profile Summary:\n"
+            "Born: 12   may 1995 in boSton, MA. Emails: test1@mail.com, test2@backup.org. "
+            "Bank: Chase Bank, Acc: 987654321, Salary: $90,000. Doctor: Dr. Smith, Allergy: Sulfa.\n\n"
+            "1. Personal Records\n"
+            "- Full Legal Name: jOhn rje doE\n"
+            "- Mother Name: aMit  sHa rma\n"
+            "- Date of Birth: Fourth of December Two Thousand Three\n"
+            "- Place of Birth: Seattle, Washington\n"
+            "2. Financial Info\n"
+            "- Bank Account Number: 00981020003456\n"
+            "3. Corrupted / Obfuscated Data\n"
+            "- Alt Email: @lice.sm1th@domain.com\n"
+            "- Weird Name: S.u.n.i.t.a\n"
+            "- Password Hint: mY  d0g's  n@m3\n"
+            "- Drop off package at 42nd and broadway, apt 3B"
+        )
+    },
+    {
+        "role": "assistant",
+        "content": json.dumps({
+            "has_pii": True,
+            "flagged_items": [
+                {"text": "12   may 1995", "type": "DEMOGRAPHIC_VITAL"},
+                {"text": "boSton, MA", "type": "DEMOGRAPHIC_VITAL"},
+                {"text": "test1@mail.com", "type": "CONTACT_LOCATION"},
+                {"text": "test2@backup.org", "type": "CONTACT_LOCATION"},
+                {"text": "Chase Bank", "type": "FINANCIAL_EMPLOYMENT"},
+                {"text": "987654321", "type": "FINANCIAL_EMPLOYMENT"},
+                {"text": "$90,000", "type": "FINANCIAL_EMPLOYMENT"},
+                {"text": "Dr. Smith", "type": "HEALTH_MEDICAL"},
+                {"text": "Sulfa", "type": "HEALTH_MEDICAL"},
+                {"text": "jOhn rje doE", "type": "PERSONAL_IDENTIFIER"},
+                {"text": "aMit  sHa rma", "type": "PERSONAL_IDENTIFIER"},
+                {"text": "Fourth of December Two Thousand Three", "type": "DEMOGRAPHIC_VITAL"},
+                {"text": "Seattle, Washington", "type": "DEMOGRAPHIC_VITAL"},
+                {"text": "00981020003456", "type": "FINANCIAL_EMPLOYMENT"},
+                {"text": "@lice.sm1th@domain.com", "type": "CONTACT_LOCATION"},
+                {"text": "S.u.n.i.t.a", "type": "PERSONAL_IDENTIFIER"},
+                {"text": "mY  d0g's  n@m3", "type": "SECURITY_SECRET"},
+                {"text": "42nd and broadway, apt 3B", "type": "CONTACT_LOCATION"}
+            ]
+        })
+    },
+    {"role": "user", "content": f"Text to audit:\n{chunk}"}
+    ]
 
         ollama_payload = {
             "model": "llama3.2:3b",
