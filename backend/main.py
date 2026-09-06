@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import docx
 import pptx
 import re
+import fitz  # <--- NEW: Add PyMuPDF here
 
 app = FastAPI(title="AI Privacy Guard Backend")
 
@@ -274,7 +275,12 @@ def extract_text_from_file(file_path: str, ext: str) -> str:
 
     elif ext == ".pdf":
         # SKELETON: PDF coordinate-based redaction will go here
-        pass
+        # ---> NEW: Extract PDF text page by page
+        doc = fitz.open(file_path)
+        for page in doc:
+            extracted_text.append(page.get_text())
+        doc.close()
+        
 
     return "\n".join(extracted_text)
 
@@ -311,7 +317,28 @@ def apply_masks_to_file(source_path: str, target_path: str, ext: str, replacemen
 
     elif ext == ".pdf":
         # SKELETON: PDF coordinate-based redaction will go here
-        pass
+        doc = fitz.open(source_path)
+        
+        for page in doc:
+            for rule in replacements:
+                # Find the exact X/Y rectangles where the sensitive word appears
+                rectangles = page.search_for(rule.original)
+                
+                for rect in rectangles:
+                    # Create a redaction annotation with replacement text
+                    page.add_redact_annot(
+                        rect, 
+                        text=rule.replace_with,  # e.g., "[NAME_1]"
+                        fill=(1, 1, 1),          # White background
+                        text_color=(0, 0, 0),    # Black text
+                        fontsize=10,             # Approximate font size
+                        align=1                  # Center align the placeholder
+                    )
+                    
+            # CRITICAL: Surgically removes original text from the file data
+            page.apply_redactions()
+        doc.save(target_path)
+        doc.close()
 
 # ----------------- API ENDPOINTS -----------------
 @app.post("/scan")
