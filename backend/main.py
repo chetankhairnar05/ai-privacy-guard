@@ -113,7 +113,7 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     # chunk_size = 2000
     # chunks = [text_content[i:i + chunk_size] for i in range(0, len(text_content), chunk_size)]
     # 1. Split text into manageable chunks WITH OVERLAP
-    chunk_size = 2000
+    chunk_size = 1500
     overlap = 50  # 50 characters overlap ensures no word/name is chopped in half
     chunks = []
     
@@ -190,6 +190,7 @@ def run_ollama_pii_audit(text_content: str) -> dict:
             "keep_alive": "5m", # Keep in RAM during the chunking loop
             "options": {
                 "temperature": 0.0,
+                "num_predict": 2000,
                 "num_ctx": 4096
             }
         }
@@ -199,6 +200,15 @@ def run_ollama_pii_audit(text_content: str) -> dict:
             res.raise_for_status()
             
             raw_result = res.json()["message"]["content"]
+
+            # Safety Check: Remove markdown formatting if the model accidentally added it
+            if raw_result.startswith("```json"):
+                raw_result = raw_result.replace("```json", "", 1)
+            if raw_result.endswith("```"):
+                raw_result = raw_result[:raw_result.rfind("```")]
+            
+            raw_result = raw_result.strip()
+            
             parsed_result = json.loads(raw_result)
             
             if parsed_result.get("has_pii") and parsed_result.get("flagged_items"):
@@ -237,7 +247,7 @@ def run_hybrid_pii_audit(text_content: str) -> dict:
     final_list = list(unique_items.values())
 
     # 4. Cleanup Memory AFTER everything is done
-    flush_ollama_memory("llama3.2:3b")
+    # flush_ollama_memory("llama3.2:3b")
 
     return {
         "has_pii": len(final_list) > 0,

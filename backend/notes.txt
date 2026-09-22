@@ -1,0 +1,15 @@
+.\venv\Scripts\Activate.ps1
+deactivate
+
+python main.py
+
+
+
+/bye
+ollama run llama3.2:3b
+
+git add .
+git commit -m ""
+git push -u origin main
+
+
