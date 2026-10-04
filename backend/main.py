@@ -11,6 +11,9 @@ import docx
 import pptx
 import re
 import fitz  # <--- NEW: Add PyMuPDF here
+import csv
+import openpyxl
+
 
 app = FastAPI(title="AI Privacy Guard Backend")
 
@@ -195,21 +198,52 @@ def run_ollama_pii_audit(text_content: str) -> dict:
             }
         }
 
+        # try:
+        #     res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=120)
+        #     res.raise_for_status()
+            
+        #     raw_result = res.json()["message"]["content"]
+
+        #     # Safety Check: Remove markdown formatting if the model accidentally added it
+        #     if raw_result.startswith("```json"):
+        #         raw_result = raw_result.replace("```json", "", 1)
+        #     if raw_result.endswith("```"):
+        #         raw_result = raw_result[:raw_result.rfind("```")]
+            
+        #     raw_result = raw_result.strip()
+            
+        #     parsed_result = json.loads(raw_result)
+            
+        #     if parsed_result.get("has_pii") and parsed_result.get("flagged_items"):
+        #         all_flagged_items.extend(parsed_result["flagged_items"])
+                
+        # except Exception as e:
+        #     print(f"Extraction error on chunk {index + 1}: {e}")
+
         try:
             res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=120)
             res.raise_for_status()
             
-            raw_result = res.json()["message"]["content"]
+            raw_result = res.json()["message"]["content"].strip()
 
-            # Safety Check: Remove markdown formatting if the model accidentally added it
-            if raw_result.startswith("```json"):
-                raw_result = raw_result.replace("```json", "", 1)
-            if raw_result.endswith("```"):
-                raw_result = raw_result[:raw_result.rfind("```")]
+            # Safety Check: Remove markdown formatting
+            if "```json" in raw_result:
+                raw_result = raw_result.split("```json")[1].split("```")[0].strip()
+            elif "```" in raw_result:
+                raw_result = raw_result.split("```")[1].strip()
             
-            raw_result = raw_result.strip()
-            
-            parsed_result = json.loads(raw_result)
+            # Attempt to parse JSON normally
+            try:
+                parsed_result = json.loads(raw_result)
+            except json.JSONDecodeError:
+                # LLM JSON Rescue: If the LLM forgets a quote or bracket, use Regex to force extract it
+                print(f"[*] JSON Error on chunk {index + 1}. Utilizing Regex Rescue...")
+                import re
+                matches = re.findall(r'"text":\s*"([^"]+)",\s*"type":\s*"([^"]+)"', raw_result)
+                parsed_result = {
+                    "has_pii": len(matches) > 0,
+                    "flagged_items": [{"text": m[0].replace("\\", ""), "type": m[1]} for m in matches]
+                }
             
             if parsed_result.get("has_pii") and parsed_result.get("flagged_items"):
                 all_flagged_items.extend(parsed_result["flagged_items"])
@@ -245,6 +279,9 @@ def run_hybrid_pii_audit(text_content: str) -> dict:
             unique_items[key] = item
 
     final_list = list(unique_items.values())
+    # CRITICAL FIX: Sort by length descending (longest strings first)
+    # This ensures "John Doe" is masked before "John", preventing broken partial masks.
+    final_list.sort(key=lambda x: len(x['text']), reverse=True)
 
     # 4. Cleanup Memory AFTER everything is done
     # flush_ollama_memory("llama3.2:3b")
@@ -290,7 +327,30 @@ def extract_text_from_file(file_path: str, ext: str) -> str:
         for page in doc:
             extracted_text.append(page.get_text())
         doc.close()
-        
+
+    # ---------- NEW CODE TO PASTE HERE ----------
+    elif ext == ".txt":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            extracted_text.append(f.read())
+            
+    elif ext == ".csv":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                # extracted_text.extend([str(cell) for cell in row if cell])
+                # CRITICAL FIX: Join cells with commas so the LLM reads it naturally
+                row_text = ", ".join([str(cell).strip() for cell in row if str(cell).strip()])
+                if row_text:
+                    extracted_text.append(row_text)
+                
+    elif ext == ".xlsx":
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                for cell in row:
+                    if cell is not None:
+                        extracted_text.append(str(cell))
+    # --------------------------------------------
 
     return "\n".join(extracted_text)
 
@@ -350,6 +410,41 @@ def apply_masks_to_file(source_path: str, target_path: str, ext: str, replacemen
         doc.save(target_path)
         doc.close()
 
+    # ---------- NEW CODE TO PASTE HERE ----------
+    elif ext == ".txt":
+        with open(source_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for rule in replacements:
+            content = content.replace(rule.original, rule.replace_with)
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    elif ext == ".csv":
+        with open(source_path, "r", encoding="utf-8", errors="ignore") as f_in, \
+             open(target_path, "w", encoding="utf-8", newline="") as f_out:
+            reader = csv.reader(f_in)
+            writer = csv.writer(f_out)
+            for row in reader:
+                new_row = []
+                for cell in row:
+                    cell_str = str(cell)
+                    for rule in replacements:
+                        cell_str = cell_str.replace(rule.original, rule.replace_with)
+                    new_row.append(cell_str)
+                writer.writerow(new_row)
+
+    elif ext == ".xlsx":
+        wb = openpyxl.load_workbook(source_path)
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows():
+                for cell in row:
+                    if cell.value and isinstance(cell.value, str):
+                        for rule in replacements:
+                            if rule.original in cell.value:
+                                cell.value = cell.value.replace(rule.original, rule.replace_with)
+        wb.save(target_path)
+    # --------------------------------------------
+
 # ----------------- API ENDPOINTS -----------------
 @app.post("/scan")
 def scan_text(request: TextScanRequest):
@@ -360,8 +455,9 @@ async def scan_file(file: UploadFile = File(...)):
     filename = file.filename
     ext = os.path.splitext(filename)[1].lower()
 
-    if ext not in [".docx", ".pptx", ".pdf"]:
-        raise HTTPException(status_code=400, detail="Only .docx, .pptx, and .pdf are supported.")
+    # --- REPLACE THIS LINE ---
+    if ext not in [".docx", ".pptx", ".pdf", ".txt", ".csv", ".xlsx"]:
+        raise HTTPException(status_code=400, detail="Only .docx, .pptx, .pdf, .txt, .csv, .xlsx are supported.")
 
     file_id = str(uuid.uuid4())
     saved_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")

@@ -13,3 +13,4 @@ git commit -m ""
 git push -u origin main
 
 
+i want this to work on Microsoft Copilot, Meta AI , grok , deepseek , perplexity , character.ai , qwen , and kimi browser version , this is already working on chatgpt , gemini and claude , so existing functionality should not break..

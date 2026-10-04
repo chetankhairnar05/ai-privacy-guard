@@ -126,7 +126,7 @@ document.addEventListener(
 
       if (target.files && target.files.length > 0) {
         const file = target.files[0];
-        const validExts = [".docx", ".pptx", ".pdf"];
+        const validExts = [".docx", ".pptx", ".pdf", ".txt", ".csv", ".xlsx"];
 
         if (validExts.some((ext) => file.name.toLowerCase().endsWith(ext))) {
           event.preventDefault();
@@ -156,7 +156,7 @@ document.addEventListener(
       event.clipboardData.files.length > 0
     ) {
       const file = event.clipboardData.files[0];
-      const validExts = [".docx", ".pptx", ".pdf"];
+      const validExts = [".docx", ".pptx", ".pdf", ".txt", ".csv", ".xlsx"];
 
       if (validExts.some((ext) => file.name.toLowerCase().endsWith(ext))) {
         event.preventDefault();
