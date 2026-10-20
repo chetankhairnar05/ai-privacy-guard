@@ -13,4 +13,24 @@ git commit -m ""
 git push -u origin main
 
 
-i want this to work on Microsoft Copilot, Meta AI , grok , deepseek , perplexity , character.ai , qwen , and kimi browser version , this is already working on chatgpt , gemini and claude , so existing functionality should not break..
+uvicorn main2:app --reload
+
+
+
+
+
+
+"*://chatgpt.com/*",
+        "*://*.chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://gemini.google.com/*",
+        "*://copilot.microsoft.com/*",
+        "*://meta.ai/*",
+      
+        "*://grok.com/*",
+       
+        "*://chat.deepseek.com/*",
+        "*://www.perplexity.ai/*",
+        qwen
+        
+        

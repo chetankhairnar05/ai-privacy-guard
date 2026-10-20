@@ -11,7 +11,22 @@
         "*://chatgpt.com/*",
         "*://*.chatgpt.com/*",
         "*://claude.ai/*",
-        "*://gemini.google.com/*"
+        "*://gemini.google.com/*",
+        "*://copilot.microsoft.com/*",
+        "*://copilot.com/*",
+        "*://meta.ai/*",
+        "*://*.meta.ai/*",
+        "*://grok.com/*",
+        "*://x.com/i/grok/*",
+        "*://chat.deepseek.com/*",
+        "*://www.perplexity.ai/*",
+        "*://character.ai/*",
+        "*://*.character.ai/*",
+        "*://chat.qwenlm.ai/*",
+        "*://tongyi.aliyun.com/*",
+        "*://kimi.ai/chat/*",
+        "*://kimi.moonshot.cn/*",
+        "*://chat.qwen.ai/*"
       ],
       "js": ["content.js"],
       "css": ["style.css"]

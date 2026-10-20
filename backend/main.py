@@ -13,6 +13,8 @@ import re
 import fitz  # <--- NEW: Add PyMuPDF here
 import csv
 import openpyxl
+import uvicorn
+
 
 
 app = FastAPI(title="AI Privacy Guard Backend")
@@ -61,19 +63,19 @@ def flush_ollama_memory(model_name: str = "llama3.2:3b"):
 def run_regex_pii_audit(text_content: str) -> List[dict]:
     """Layer 1: Deterministic Regex catching for rigid formats."""
     patterns = {
-        "CONTACT_LOCATION": [
+        "CONTACT": [
             r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", 
             r"(?:\+?\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}" 
         ],
-        "NETWORK_DEVICE": [
+        "NETWORK": [
             r"\b(?:\d{1,3}\.){3}\d{1,3}\b", 
             r"(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})" 
         ],
-        "SECURITY_SECRET": [
+        "SECURITY": [
             r"ghp_[a-zA-Z0-9]{36}", 
             r"AKIA[0-9A-Z]{16}" 
         ],
-        "GOVERNMENT_LEGAL": [
+        "GOVERNMENT": [
             r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b", 
             r"\b\d{4}[\s\-]?\d{4}[\s\-]?\d{4}\b" 
         ]
@@ -94,14 +96,14 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     "Your objective is the EXHAUSTIVE extraction of every piece of Personally Identifiable Information (PII), "
     "sensitive personal data, and confidential credentials from the provided text.\n\n"
     "You MUST detect and categorize every instance into one of these 8 categories:\n"
-    "1. PERSONAL_IDENTIFIER: Individual names, maiden names, family members, spouses, managers, educators.\n"
-    "2. DEMOGRAPHIC_VITAL: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
-    "3. CONTACT_LOCATION: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
-    "4. GOVERNMENT_LEGAL: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
-    "5. FINANCIAL_EMPLOYMENT: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
-    "6. HEALTH_MEDICAL: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
-    "7. NETWORK_DEVICE: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
-    "8. SECURITY_SECRET: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
+    "1. PERSONAL: Individual names, maiden names, family members, spouses, managers, educators.\n"
+    "2. DEMOGRAPHIC: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
+    "3. CONTACT: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
+    "4. GOVERNMENT: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
+    "5. FINANCIAL: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
+    "6. HEALTH: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
+    "7. NETWORK: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
+    "8. SECURITY: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
     "STRICT EXTRACTION RULES:\n"
     "- ANTI-NORMALIZATION: You MUST extract the EXACT raw string. DO NOT change capitalization. DO NOT fix spelling. DO NOT remove extra spaces. If the text says 'aMit  sHarma', you must extract 'aMit  sHarma' this is the most important rule to follow.\n"
     "- OBFUSCATION & CORRUPTION BYPASS: PII may be corrupted by PDF extraction or typed with Leet Speak (e.g., 'j0hn', '@lice', 'P@ssw0rd', 'A.m.i.t', 'S H A R M A'). You MUST identify and extract these obfuscated values exactly as written.\n"
@@ -116,7 +118,7 @@ def run_ollama_pii_audit(text_content: str) -> dict:
     # chunk_size = 2000
     # chunks = [text_content[i:i + chunk_size] for i in range(0, len(text_content), chunk_size)]
     # 1. Split text into manageable chunks WITH OVERLAP
-    chunk_size = 1500
+    chunk_size = 1300
     overlap = 50  # 50 characters overlap ensures no word/name is chopped in half
     chunks = []
     
@@ -161,24 +163,24 @@ def run_ollama_pii_audit(text_content: str) -> dict:
         "content": json.dumps({
             "has_pii": True,
             "flagged_items": [
-                {"text": "12   may 1995", "type": "DEMOGRAPHIC_VITAL"},
-                {"text": "boSton, MA", "type": "DEMOGRAPHIC_VITAL"},
-                {"text": "test1@mail.com", "type": "CONTACT_LOCATION"},
-                {"text": "test2@backup.org", "type": "CONTACT_LOCATION"},
-                {"text": "Chase Bank", "type": "FINANCIAL_EMPLOYMENT"},
-                {"text": "987654321", "type": "FINANCIAL_EMPLOYMENT"},
-                {"text": "$90,000", "type": "FINANCIAL_EMPLOYMENT"},
-                {"text": "Dr. Smith", "type": "HEALTH_MEDICAL"},
-                {"text": "Sulfa", "type": "HEALTH_MEDICAL"},
-                {"text": "jOhn rje doE", "type": "PERSONAL_IDENTIFIER"},
-                {"text": "aMit  sHa rma", "type": "PERSONAL_IDENTIFIER"},
-                {"text": "Fourth of December Two Thousand Three", "type": "DEMOGRAPHIC_VITAL"},
-                {"text": "Seattle, Washington", "type": "DEMOGRAPHIC_VITAL"},
-                {"text": "00981020003456", "type": "FINANCIAL_EMPLOYMENT"},
-                {"text": "@lice.sm1th@domain.com", "type": "CONTACT_LOCATION"},
-                {"text": "S.u.n.i.t.a", "type": "PERSONAL_IDENTIFIER"},
-                {"text": "mY  d0g's  n@m3", "type": "SECURITY_SECRET"},
-                {"text": "42nd and broadway, apt 3B", "type": "CONTACT_LOCATION"}
+                {"text": "12   may 1995", "type": "DEMOGRAPHIC"},
+                {"text": "boSton, MA", "type": "DEMOGRAPHIC"},
+                {"text": "test1@mail.com", "type": "CONTACT"},
+                {"text": "test2@backup.org", "type": "CONTACT"},
+                {"text": "Chase Bank", "type": "FINANCIAL"},
+                {"text": "987654321", "type": "FINANCIAL"},
+                {"text": "$90,000", "type": "FINANCIAL"},
+                {"text": "Dr. Smith", "type": "HEALTH"},
+                {"text": "Sulfa", "type": "HEALTH"},
+                {"text": "jOhn rje doE", "type": "PERSONAL"},
+                {"text": "aMit  sHa rma", "type": "PERSONAL"},
+                {"text": "Fourth of December Two Thousand Three", "type": "DEMOGRAPHIC"},
+                {"text": "Seattle, Washington", "type": "DEMOGRAPHIC"},
+                {"text": "00981020003456", "type": "FINANCIAL"},
+                {"text": "@lice.sm1th@domain.com", "type": "CONTACT"},
+                {"text": "S.u.n.i.t.a", "type": "PERSONAL"},
+                {"text": "mY  d0g's  n@m3", "type": "SECURITY"},
+                {"text": "42nd and broadway, apt 3B", "type": "CONTACT"}
             ]
         })
     },
@@ -193,32 +195,12 @@ def run_ollama_pii_audit(text_content: str) -> dict:
             "keep_alive": "5m", # Keep in RAM during the chunking loop
             "options": {
                 "temperature": 0.0,
-                "num_predict": 2000,
+                "num_predict": 2500,
                 "num_ctx": 4096
             }
         }
 
-        # try:
-        #     res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=120)
-        #     res.raise_for_status()
-            
-        #     raw_result = res.json()["message"]["content"]
-
-        #     # Safety Check: Remove markdown formatting if the model accidentally added it
-        #     if raw_result.startswith("```json"):
-        #         raw_result = raw_result.replace("```json", "", 1)
-        #     if raw_result.endswith("```"):
-        #         raw_result = raw_result[:raw_result.rfind("```")]
-            
-        #     raw_result = raw_result.strip()
-            
-        #     parsed_result = json.loads(raw_result)
-            
-        #     if parsed_result.get("has_pii") and parsed_result.get("flagged_items"):
-        #         all_flagged_items.extend(parsed_result["flagged_items"])
-                
-        # except Exception as e:
-        #     print(f"Extraction error on chunk {index + 1}: {e}")
+        
 
         try:
             res = requests.post("http://localhost:11434/api/chat", json=ollama_payload, timeout=120)
@@ -238,7 +220,7 @@ def run_ollama_pii_audit(text_content: str) -> dict:
             except json.JSONDecodeError:
                 # LLM JSON Rescue: If the LLM forgets a quote or bracket, use Regex to force extract it
                 print(f"[*] JSON Error on chunk {index + 1}. Utilizing Regex Rescue...")
-                import re
+                
                 matches = re.findall(r'"text":\s*"([^"]+)",\s*"type":\s*"([^"]+)"', raw_result)
                 parsed_result = {
                     "has_pii": len(matches) > 0,
@@ -500,5 +482,5 @@ async def mask_file(file_id: str = Form(...), rules_json: str = Form(...)):
     )
 
 if __name__ == "__main__":
-    import uvicorn
+    
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
