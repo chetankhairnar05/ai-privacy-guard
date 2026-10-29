@@ -34,3 +34,17 @@ uvicorn main2:app --reload
         qwen
         
         
+
+
+
+
+one of these 8 categories:\n"
+    "1. PERSONAL: Individual names, maiden names, family members, spouses, managers, educators.\n"
+    "2. DEMOGRAPHIC: Date of birth, age, place/city of birth, citizenship, blood group, demographic traits.\n"
+    "3. CONTACT: Personal and backup emails, phone numbers, postal addresses, apartment/room numbers.\n"
+    "4. GOVERNMENT: Passports, National IDs, Driver's Licenses, Voter IDs, Tax numbers, Student roll numbers.\n"
+    "5. FINANCIAL: Bank names, card providers, credit/debit card numbers, CVVs, account numbers, routing/IFSC codes, salary/income, employer names.\n"
+    "6. HEALTH: Illnesses, allergies, prescriptions/medications, primary doctors, clinic addresses, medical test IDs, health app tokens.\n"
+    "7. NETWORK: Wi-Fi SSIDs, router passwords, IP addresses (IPv4/IPv6), MAC addresses.\n"
+    "8. SECURITY: API keys, access tokens, SSH keys, crypto wallet addresses, hashes, password hints, 2FA codes.\n\n"
+    "STRICT EXTRACTION RULES:\n"
